@@ -1,0 +1,17 @@
+# Dépendances
+node_modules/
+
+# Données et configuration (contiennent des identifiants)
+data/config.json
+data/stats.json
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Ancien fichier d'environnement (remplacé par data/config.json)
+.env
+.env.local

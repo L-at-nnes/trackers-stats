@@ -1,0 +1,13 @@
+services:
+  trackers-stats:
+    build: .
+    container_name: trackers-stats
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # data/ persiste stats + config entre les redémarrages
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - HEADLESS=true

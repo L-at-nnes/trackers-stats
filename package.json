@@ -1,0 +1,16 @@
+{
+  "name": "trackers-stats",
+  "version": "2.0.0",
+  "description": "Scraping de stats de trackers privés",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "scrape": "node scrape.js"
+  },
+  "dependencies": {
+    "express": "^4.22.1",
+    "puppeteer-core": "^24.37.5",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

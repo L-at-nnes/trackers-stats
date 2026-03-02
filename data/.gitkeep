@@ -1,0 +1,3 @@
+# Ce fichier permet à git de suivre le dossier data/.
+# Les fichiers data/config.json et data/stats.json sont exclus du dépôt (.gitignore)
+# car ils contiennent des identifiants et des données locales.
