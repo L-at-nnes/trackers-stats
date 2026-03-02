@@ -184,13 +184,24 @@ function msUntilNext() {
     return intervalMs;
   }
   const [h, m] = START_TIME.split(':').map(Number);
+
+  // Ancre = aujourd'hui à START_TIME, en heure LOCALE du serveur
   const anchor = new Date();
   anchor.setHours(h, m, 0, 0);
-  const anchorMs = anchor.getTime();
+  let anchorMs = anchor.getTime();
+
   const now = Date.now();
-  const diff = now - anchorMs;
-  const elapsed = Math.floor(diff / intervalMs);
-  const next = anchorMs + (elapsed + 1) * intervalMs;
+
+  // Si l'ancre est dans le futur (ex: il est 19h, start=20h),
+  // reculer l'ancre d'un intervalle pour que le calcul converge
+  // sur le prochain slot APRÈS now.
+  if (anchorMs > now) {
+    anchorMs -= intervalMs;
+  }
+
+  const diff = now - anchorMs;                          // toujours >= 0
+  const elapsed = Math.floor(diff / intervalMs);         // nb de slots écoulés
+  const next = anchorMs + (elapsed + 1) * intervalMs;   // prochain slot
   return Math.max(1000, next - now);
 }
 
@@ -200,9 +211,16 @@ function msUntilNext() {
 app.listen(PORT, () => {
   console.log(`\n══════════════════════════════════════════════`);
   console.log(`  TRACKERS-STATS — http://localhost:${PORT}`);
-  console.log(`  Intervalle: ${INTERVAL} min`);
-  console.log(`══════════════════════════════════════════════\n`);
+  console.log(`  Intervalle: ${INTERVAL} min${START_TIME ? ' • départ ' + START_TIME : ''}`);
+  console.log(`  TZ serveur: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+  console.log(`════════════════════════════════════════════\n`);
 
-  // Premier scrape dans 5s
-  setTimeout(doScrape, 5000);
+  if (START_TIME) {
+    // Si un heure de début est configurée : aligner le PREMIER scrape
+    // sur le prochain slot (pas de scrape immédiat au boot)
+    scheduleNext();
+  } else {
+    // Pas de START_TIME : premier scrape dans 5s, puis intervalle fixe
+    setTimeout(doScrape, 5000);
+  }
 });

@@ -11,3 +11,4 @@ services:
     environment:
       - PORT=3000
       - HEADLESS=true
+      - TZ=Europe/Paris
