@@ -130,6 +130,20 @@ tr:hover td { background: #263448; }
 .toast.show { opacity: 1; transform: translateY(0); }
 .toast.error { background: #ef4444; }
 
+/* ── Groupement tableau ── */
+.group-selector { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.group-radio { display: flex; align-items: center; gap: 0.3rem; padding: 0.28rem 0.7rem; border-radius: 20px; border: 1.5px solid #334155; cursor: pointer; font-size: 0.76rem; color: #64748b; transition: all 0.15s; user-select: none; }
+.group-radio input[type=radio] { display: none; }
+.group-radio.active { border-color: #38bdf8; color: #38bdf8; background: #38bdf820; }
+.group-radio:hover:not(.active) { border-color: #475569; color: #e2e8f0; }
+/* Ligne de groupe */
+tr.group-row td { background: #162032; color: #94a3b8; font-weight: 600; font-size: 0.8rem; cursor: pointer; }
+tr.group-row:hover td { background: #1a2d45; }
+tr.group-row td.group-toggle { color: #38bdf8; font-size: 0.7rem; width: 28px; text-align: center; }
+tr.sub-row td { background: #111c2d; }
+tr.sub-row:hover td { background: #162032; }
+tr.sub-row.hidden { display: none; }
+.delta-cell { font-size: 0.72em; opacity: 0.85; }
 /* ── Footer ── */
 .footer { text-align: center; padding: 2rem; font-size: 0.72rem; color: #334155; }
 </style>
@@ -162,11 +176,18 @@ tr:hover td { background: #263448; }
         <h2>Évolution des torrents</h2>
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
           <div class="range-btns" id="rangeBtns">
-            <button onclick="setRange('6h')"  id="btn-6h">6h</button>
-            <button onclick="setRange('24h')" id="btn-24h" class="active">24h</button>
-            <button onclick="setRange('7d')"  id="btn-7d">7j</button>
-            <button onclick="setRange('30d')" id="btn-30d">30j</button>
-            <button onclick="setRange('all')" id="btn-all">Tout</button>
+            <button onclick="setRange('6h')"   id="btn-6h">6h</button>
+            <button onclick="setRange('12h')"  id="btn-12h">12h</button>
+            <button onclick="setRange('24h')"  id="btn-24h" class="active">24h</button>
+            <button onclick="setRange('2d')"   id="btn-2d">2j</button>
+            <button onclick="setRange('3d')"   id="btn-3d">3j</button>
+            <button onclick="setRange('7d')"   id="btn-7d">7j</button>
+            <button onclick="setRange('15d')"  id="btn-15d">15j</button>
+            <button onclick="setRange('30d')"  id="btn-30d">30j</button>
+            <button onclick="setRange('60d')"  id="btn-60d">60j</button>
+            <button onclick="setRange('120d')" id="btn-120d">120j</button>
+            <button onclick="setRange('180d')" id="btn-180d">180j</button>
+            <button onclick="setRange('all')"  id="btn-all">Tout</button>
           </div>
           <div class="chart-actions">
             <button onclick="exportChartPNG()" title="Exporter en PNG">⬇ PNG</button>
@@ -185,8 +206,13 @@ tr:hover td { background: #263448; }
 
   <!-- ══ VUE TABLEAU ══════════════════════════════════════ -->
   <div class="view" id="view-tableau">
-    <div class="table-toolbar">
-      <input class="search-box" type="text" id="tableSearch" placeholder="Filtrer par date..." oninput="renderTable()">
+    <div class="table-toolbar">      <div class="group-selector">
+        <span style="color:#64748b;font-size:0.78rem;">Grouper :</span>
+        <label class="group-radio active" id="grp-none" onclick="setTableGroup('none')"><input type="radio" name="grp" value="none" checked> Aucun</label>
+        <label class="group-radio" id="grp-day"   onclick="setTableGroup('day')"><input type="radio" name="grp" value="day"> Jour</label>
+        <label class="group-radio" id="grp-week"  onclick="setTableGroup('week')"><input type="radio" name="grp" value="week"> Semaine</label>
+        <label class="group-radio" id="grp-month" onclick="setTableGroup('month')"><input type="radio" name="grp" value="month"> Mois</label>
+      </div>      <input class="search-box" type="text" id="tableSearch" placeholder="Filtrer par date..." oninput="renderTable()">
       <span style="font-size:0.8rem;color:#64748b;" id="tableCount"></span>
       <div style="flex:1"></div>
       <button class="btn-ghost" onclick="exportCSV()">⬇ Exporter CSV</button>
@@ -195,6 +221,7 @@ tr:hover td { background: #263448; }
       <table>
         <thead>
           <tr>
+            <th style="width:28px;"></th>
             <th onclick="sortTable('timestamp')" id="th-timestamp">Date <span class="sort-icon">↓</span></th>
             <th onclick="sortTable('c411')" id="th-c411"><span class="tracker-name c411" style="font-size:inherit;text-transform:none;letter-spacing:0">C411</span> <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('lacale')" id="th-lacale"><span class="tracker-name lacale" style="font-size:inherit;text-transform:none;letter-spacing:0">La Cale</span> <span class="sort-icon">↕</span></th>
@@ -343,6 +370,23 @@ let sortDir = -1; // -1 = desc, 1 = asc
 let tablePage = 1;
 const PAGE_SIZE = 25;
 let statusCache = null;
+let tableGroup = 'none'; // 'none' | 'day' | 'week' | 'month'
+let expandedGroups = new Set();
+
+// ── Plages disponibles ──────────────────────────────────
+const RANGE_MS = {
+  '6h':   6*3600e3,      '12h':  12*3600e3,
+  '24h':  24*3600e3,     '2d':   2*86400e3,
+  '3d':   3*86400e3,     '7d':   7*86400e3,
+  '15d':  15*86400e3,    '30d':  30*86400e3,
+  '60d':  60*86400e3,    '120d': 120*86400e3,
+  '180d': 180*86400e3,
+};
+const RANGE_LABEL = {
+  '6h':'6h','12h':'12h','24h':'24h','2d':'2j','3d':'3j',
+  '7d':'7j','15d':'15j','30d':'30j','60d':'60j','120d':'120j',
+  '180d':'180j','all':'début',
+};
 
 // ══════════════════════════════════════════════════════════
 //  Navigation
@@ -409,14 +453,12 @@ function renderCards() {
   const last = allData[allData.length - 1];
 
   // Trouve le premier point dans la plage actuellement sélectionnée
-  const rangeMs = { '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*86400e3, '30d': 30*86400e3 };
-  const rangeLabel = { '6h': '6h', '24h': '24h', '7d': '7j', '30d': '30j', 'all': 'début' };
   let rangeFirst = null;
   if (allData.length > 1) {
     if (currentRange === 'all') {
       rangeFirst = allData[0];
     } else {
-      const cutoff = Date.now() - (rangeMs[currentRange] || 24*3600e3);
+      const cutoff = Date.now() - (RANGE_MS[currentRange] || 24*3600e3);
       const inRange = allData.filter(s => new Date(s.timestamp).getTime() >= cutoff);
       if (inRange.length > 1) rangeFirst = inRange[0];
     }
@@ -439,7 +481,7 @@ function renderCards() {
       const d = count - firstCount;
       const cls = d > 0 ? 'up' : d < 0 ? 'down' : 'same';
       const sign = d > 0 ? '+' : '';
-      const lbl = rangeLabel[currentRange] || currentRange;
+      const lbl = RANGE_LABEL[currentRange] || currentRange;
       deltaHtml = `<div class="delta ${cls}" title="Sur les dernières ${lbl}">${sign}${d.toLocaleString('fr-FR')} <span style="font-size:0.7em;opacity:0.7;">${lbl}</span></div>`;
     }
     return `<div class="card">
@@ -518,62 +560,86 @@ function decimateData(data) {
 function getFilteredData() {
   let filtered = allData;
   if (currentRange !== 'all' && allData.length) {
-    const now = Date.now();
-    const ranges = { '6h': 6*3600e3, '24h': 24*3600e3, '7d': 7*86400e3, '30d': 30*86400e3 };
-    const cutoff = now - (ranges[currentRange] || 24*3600e3);
+    const cutoff = Date.now() - (RANGE_MS[currentRange] || 24*3600e3);
     filtered = allData.filter(s => new Date(s.timestamp).getTime() >= cutoff);
   }
   return decimateData(filtered);
 }
 
-// ─── Plugin Chart.js : delta cumulatif de la période sur le DERNIER point ────
-// Montre le total (premier→dernier) de la plage affichée pour chaque tracker
+// ─── Plugin fond opaque (PNG export) ─────────────────────
+const bgPlugin = {
+  id: 'customBackground',
+  beforeDraw(chart) {
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, chart.width, chart.height);
+    ctx.restore();
+  }
+};
+
+// ─── Plugin: delta par point (+XX dans la couleur du tracker) ─
+// Max MAX_LABELS indices équidistants sur la plage visible.
+// Chaque label montre ∆ vs le point précédent.
 const deltaPlugin = {
   id: 'deltaLabels',
   afterDatasetsDraw(chart) {
     const ctx = chart.ctx;
-    const activeTrackers = TRACKERS.filter(t => trackerVisible[t.id]);
+    const n = chart.data.labels.length;
+    if (n < 2) return;
+
+    // Indices à labelliser : cibler ~10 positions équidistantes
+    const MAX_LABELS = 10;
+    const step = Math.max(1, Math.ceil((n - 1) / MAX_LABELS));
+    const labelIdxSet = new Set();
+    for (let i = step; i < n; i += step) labelIdxSet.add(i);
+    labelIdxSet.add(n - 1); // toujours le dernier point
+
     chart.data.datasets.forEach((dataset, di) => {
       const meta = chart.getDatasetMeta(di);
       if (meta.hidden) return;
-      const color = activeTrackers[di]?.color || '#94a3b8';
-      // Décaler verticalement pour éviter les collisions entre trackers
-      const yShift = -20 - di * 14;
+      const color = dataset.borderColor || '#94a3b8';
 
-      // Valeur sur l'ensemble de la plage : dernier - premier point non null
-      const vals = dataset.data.filter(v => v != null);
-      if (vals.length < 2) return;
-      const delta = vals[vals.length - 1] - vals[0];
-      if (delta === 0) return;
+      labelIdxSet.forEach(idx => {
+        const cur  = dataset.data[idx];
+        const prev = dataset.data[idx - 1];
+        if (cur == null || prev == null) return;
+        const delta = cur - prev;
+        if (delta === 0) return;
 
-      // Afficher uniquement sur le dernier point non-null du dataset
-      let lastPt = null;
-      for (let i = meta.data.length - 1; i >= 0; i--) {
-        if (dataset.data[i] != null) { lastPt = meta.data[i]; break; }
-      }
-      if (!lastPt) return;
+        const pt = meta.data[idx];
+        if (!pt) return;
 
-      const text = (delta > 0 ? '+' : '') + delta.toLocaleString('fr-FR');
-      ctx.save();
-      ctx.font = 'bold 10px system-ui,sans-serif';
-      ctx.fillStyle = delta > 0 ? '#4ade80' : '#f87171';
-      ctx.globalAlpha = 0.95;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      // Petite pilule de fond pour la lisibilité
-      const tw = ctx.measureText(text).width + 8;
-      const th = 14;
-      const tx = Math.min(Math.max(lastPt.x, tw / 2 + 4), chart.chartArea.right - tw / 2 - 4);
-      const ty = lastPt.y + yShift;
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = delta > 0 ? '#4ade80' : '#f87171';
-      ctx.beginPath();
-      ctx.roundRect(tx - tw/2, ty - th/2, tw, th, 4);
-      ctx.fill();
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = delta > 0 ? '#4ade80' : '#f87171';
-      ctx.fillText(text, tx, ty);
-      ctx.restore();
+        const text = (delta > 0 ? '+' : '') + delta.toLocaleString('fr-FR');
+        // Décaler verticalement par dataset pour éviter les collisions
+        const yOff = -6 - di * 13;
+        const tx = Math.min(
+          Math.max(pt.x, 24),
+          chart.chartArea.right - 24
+        );
+        const ty = pt.y + yOff;
+
+        ctx.save();
+        ctx.font = 'bold 9px system-ui,sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        // Pilule de fond semi-transparente
+        const tw = ctx.measureText(text).width + 6;
+        const th = 12;
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(tx - tw/2, ty - th, tw, th, 3);
+        else ctx.rect(tx - tw/2, ty - th, tw, th);
+        ctx.fill();
+
+        // Texte
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = color;
+        ctx.fillText(text, tx, ty);
+        ctx.restore();
+      });
     });
   }
 };
@@ -601,7 +667,7 @@ function renderChart() {
   chart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets },
-    plugins: [deltaPlugin],
+    plugins: [bgPlugin, deltaPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -641,24 +707,73 @@ function renderChart() {
 function setRange(r) {
   currentRange = r;
   document.querySelectorAll('.range-btns button').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + r).classList.add('active');
+  const btn = document.getElementById('btn-' + r);
+  if (btn) btn.classList.add('active');
   renderChart();
   renderCards();
 }
 
 // ══════════════════════════════════════════════════════════
-//  Tableau complet
+//  Tableau — groupement
 // ══════════════════════════════════════════════════════════
-function getSortedFiltered() {
-  const query = (document.getElementById('tableSearch')?.value || '').toLowerCase();
-  // Pre-compute "previous scrape" map (chronological order)
+function setTableGroup(val) {
+  tableGroup = val;
+  expandedGroups.clear();
+  tablePage = 1;
+  ['none','day','week','month'].forEach(v => {
+    const el = document.getElementById('grp-' + v);
+    if (el) el.classList.toggle('active', v === val);
+  });
+  renderTable();
+}
+
+function getGroupKey(ts, group) {
+  const d = new Date(ts);
+  if (group === 'day') {
+    return d.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  }
+  if (group === 'week') {
+    const tmp = new Date(d); tmp.setHours(0,0,0,0);
+    tmp.setDate(tmp.getDate() + 3 - (tmp.getDay() + 6) % 7);
+    const w1 = new Date(tmp.getFullYear(), 0, 4);
+    const wn = 1 + Math.round(((tmp - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7);
+    return `${tmp.getFullYear()}-W${String(wn).padStart(2,'0')}`;
+  }
+  if (group === 'month') {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  return ts;
+}
+
+function getGroupLabel(key, group) {
+  if (group === 'day')   return key;
+  if (group === 'week') {
+    const [year, w] = key.split('-W');
+    // Calculer les dates de début/fin de la semaine
+    const jan4 = new Date(year, 0, 4);
+    const dayOfWeek = (jan4.getDay() + 6) % 7;
+    const weekStart = new Date(jan4);
+    weekStart.setDate(jan4.getDate() - dayOfWeek + (parseInt(w) - 1) * 7);
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+    const fmt = d => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+    return `Sem. ${w} · ${fmt(weekStart)} – ${fmt(weekEnd)}`;
+  }
+  if (group === 'month') {
+    const [year, month] = key.split('-');
+    return new Date(year, month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  }
+  return key;
+}
+
+// ── Données pour le tableau (avec deltas par rapport au scrape précédent) ──
+function getAllRows() {
   const sortedChron = [...allData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   const prevMap = new Map();
   for (let i = 1; i < sortedChron.length; i++) prevMap.set(sortedChron[i].timestamp, sortedChron[i-1]);
 
-  let rows = allData.map(s => {
+  return allData.map(s => {
     const prev = prevMap.get(s.timestamp);
-    return {
+    const row = {
       timestamp: s.timestamp,
       c411:   s.trackers.c411?.torrents   ?? null,
       lacale: s.trackers.lacale?.torrents ?? null,
@@ -666,19 +781,21 @@ function getSortedFiltered() {
       abn:    s.trackers.abn?.torrents    ?? null,
       tos:    s.trackers.tos?.torrents    ?? null,
       gf:     s.trackers.gf?.torrents     ?? null,
-      // Deltas vs scrape précédent
-      d_c411:   prev && s.trackers.c411?.torrents   != null && prev.trackers.c411?.torrents   != null ? s.trackers.c411.torrents   - prev.trackers.c411.torrents   : null,
-      d_lacale: prev && s.trackers.lacale?.torrents != null && prev.trackers.lacale?.torrents != null ? s.trackers.lacale.torrents - prev.trackers.lacale.torrents : null,
-      d_torr9:  prev && s.trackers.torr9?.torrents  != null && prev.trackers.torr9?.torrents  != null ? s.trackers.torr9.torrents  - prev.trackers.torr9.torrents  : null,
-      d_abn:    prev && s.trackers.abn?.torrents    != null && prev.trackers.abn?.torrents    != null ? s.trackers.abn.torrents    - prev.trackers.abn.torrents    : null,
-      d_tos:    prev && s.trackers.tos?.torrents    != null && prev.trackers.tos?.torrents    != null ? s.trackers.tos.torrents    - prev.trackers.tos.torrents    : null,
-      d_gf:     prev && s.trackers.gf?.torrents     != null && prev.trackers.gf?.torrents     != null ? s.trackers.gf.torrents     - prev.trackers.gf.torrents     : null,
-      get total() { return (this.c411||0)+(this.lacale||0)+(this.torr9||0)+(this.abn||0)+(this.tos||0)+(this.gf||0); },
     };
+    for (const id of ['c411','lacale','torr9','abn','tos','gf']) {
+      const cur  = s.trackers[id]?.torrents;
+      const prv  = prev?.trackers[id]?.torrents;
+      row['d_'+id] = (cur != null && prv != null) ? cur - prv : null;
+    }
+    row.total = (row.c411||0)+(row.lacale||0)+(row.torr9||0)+(row.abn||0)+(row.tos||0)+(row.gf||0);
+    return row;
   });
-  if (query) {
-    rows = rows.filter(r => new Date(r.timestamp).toLocaleString('fr-FR').toLowerCase().includes(query));
-  }
+}
+
+function getSortedFiltered() {
+  const query = (document.getElementById('tableSearch')?.value || '').toLowerCase();
+  let rows = getAllRows();
+  if (query) rows = rows.filter(r => new Date(r.timestamp).toLocaleString('fr-FR').toLowerCase().includes(query));
   rows.sort((a, b) => {
     const va = sortCol === 'timestamp' ? new Date(a.timestamp).getTime() : (a[sortCol] ?? -1);
     const vb = sortCol === 'timestamp' ? new Date(b.timestamp).getTime() : (b[sortCol] ?? -1);
@@ -687,30 +804,123 @@ function getSortedFiltered() {
   return rows;
 }
 
+// ══════════════════════════════════════════════════════════
+//  Tableau complet
+// ══════════════════════════════════════════════════════════
 function renderTable() {
   const rows = getSortedFiltered();
+  const query = (document.getElementById('tableSearch')?.value || '').toLowerCase();
   const total = rows.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (tablePage > totalPages) tablePage = totalPages;
-  const pageRows = rows.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
-
-  document.getElementById('tableCount').textContent = `${total} entrée${total > 1 ? 's' : ''}`;
 
   const fmt = v => v != null ? v.toLocaleString('fr-FR') : '<span style="color:#475569">—</span>';
-  const fmtDelta = d => {
+  const TRACKER_COLORS = { c411:'#34d399', lacale:'#fbbf24', torr9:'#22d3ee', abn:'#a78bfa', tos:'#f97316', gf:'#e879f9' };
+  const fmtDelta = (d, id) => {
     if (d == null || d === 0) return '';
     const sign = d > 0 ? '+' : '';
-    const col = d > 0 ? '#4ade80' : '#f87171';
-    return ` <span style="color:${col};font-size:0.75em;">(${sign}${d.toLocaleString('fr-FR')})</span>`;
+    const col = TRACKER_COLORS[id] || (d > 0 ? '#4ade80' : '#f87171');
+    return ` <span class="delta-cell" style="color:${col}">(${sign}${d.toLocaleString('fr-FR')})</span>`;
   };
-  document.getElementById('tbody').innerHTML = pageRows.length
-    ? pageRows.map(r => {
+
+  if (tableGroup === 'none') {
+    // ── Vue non groupée (comportement original) ──────────
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (tablePage > totalPages) tablePage = totalPages;
+    const pageRows = rows.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+
+    document.getElementById('tableCount').textContent = `${total} entrée${total > 1 ? 's' : ''}`;
+
+    document.getElementById('tbody').innerHTML = pageRows.length
+      ? pageRows.map(r => {
+          const d = new Date(r.timestamp).toLocaleString('fr-FR');
+          const tot = r.total > 0 ? r.total.toLocaleString('fr-FR') : '<span style="color:#475569">—</span>';
+          return `<tr><td></td><td>${d}</td>` +
+            ['c411','lacale','torr9','abn','tos','gf'].map(id =>
+              `<td>${fmt(r[id])}${fmtDelta(r['d_'+id], id)}</td>`
+            ).join('') +
+            `<td>${tot}</td></tr>`;
+        }).join('')
+      : `<tr><td colspan="9" class="empty-row">Aucune donnée</td></tr>`;
+
+    renderSortIcons();
+    renderPagination(totalPages);
+    return;
+  }
+
+  // ── Vue groupée ─────────────────────────────────────────
+  // Regrouper par clé
+  const groups = new Map();
+  for (const r of rows) {
+    const key = getGroupKey(r.timestamp, tableGroup);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+
+  // Trier les groupes par ordre chronologique
+  const groupOrder = [...groups.keys()].sort((a, b) => {
+    const ra = groups.get(a), rb = groups.get(b);
+    const ta = new Date(ra[0].timestamp).getTime(), tb = new Date(rb[0].timestamp).getTime();
+    return sortDir * (ta < tb ? 1 : -1);
+  });
+
+  document.getElementById('tableCount').textContent = `${groupOrder.length} groupe${groupOrder.length > 1 ? 's' : ''} · ${total} entrée${total > 1 ? 's' : ''}`;
+
+  const tbody = document.getElementById('tbody');
+  let html = '';
+
+  for (const key of groupOrder) {
+    const groupRows = groups.get(key);
+    const label = getGroupLabel(key, tableGroup);
+    const isOpen = expandedGroups.has(key);
+
+    // Calcul agrégats : valeur du dernière scrape + delta (dernier - premier) par tracker
+    const TRACKER_IDS = ['c411','lacale','torr9','abn','tos','gf'];
+    const chronoRows = [...groupRows].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+    const firstRow = chronoRows[0], lastRow = chronoRows[chronoRows.length-1];
+
+    const groupDelta = {};
+    const groupLast  = {};
+    for (const id of TRACKER_IDS) {
+      groupLast[id]  = lastRow[id];
+      const fv = firstRow[id], lv = lastRow[id];
+      groupDelta[id] = (fv != null && lv != null) ? lv - fv : null;
+    }
+    const totalLast = (groupLast.c411||0)+(groupLast.lacale||0)+(groupLast.torr9||0)+(groupLast.abn||0)+(groupLast.tos||0)+(groupLast.gf||0);
+
+    html += `<tr class="group-row" onclick="toggleGroup('${key.replace(/'/g,"\\'")}')">
+      <td class="group-toggle">${isOpen ? '▾' : '▸'}</td>
+      <td colspan="1" style="color:#e2e8f0;">${label} <span style="color:#64748b;font-size:0.72em;">(${groupRows.length})</span></td>
+      ${TRACKER_IDS.map(id =>
+        `<td>${fmt(groupLast[id])}${fmtDelta(groupDelta[id], id)}</td>`
+      ).join('')}
+      <td>${totalLast > 0 ? totalLast.toLocaleString('fr-FR') : '<span style="color:#475569">—</span>'}</td>
+    </tr>`;
+
+    if (isOpen) {
+      for (const r of groupRows) {
         const d = new Date(r.timestamp).toLocaleString('fr-FR');
         const tot = r.total > 0 ? r.total.toLocaleString('fr-FR') : '<span style="color:#475569">—</span>';
-        return `<tr><td>${d}</td><td>${fmt(r.c411)}${fmtDelta(r.d_c411)}</td><td>${fmt(r.lacale)}${fmtDelta(r.d_lacale)}</td><td>${fmt(r.torr9)}${fmtDelta(r.d_torr9)}</td><td>${fmt(r.abn)}${fmtDelta(r.d_abn)}</td><td>${fmt(r.tos)}${fmtDelta(r.d_tos)}</td><td>${fmt(r.gf)}${fmtDelta(r.d_gf)}</td><td>${tot}</td></tr>`;
-      }).join('')
-    : `<tr><td colspan="8" class="empty-row">Aucune donnée</td></tr>`;
+        html += `<tr class="sub-row">
+          <td></td>
+          <td style="padding-left:1.8rem;color:#64748b;">${d}</td>
+          ${TRACKER_IDS.map(id => `<td>${fmt(r[id])}${fmtDelta(r['d_'+id], id)}</td>`).join('')}
+          <td>${tot}</td>
+        </tr>`;
+      }
+    }
+  }
 
+  tbody.innerHTML = html || `<tr><td colspan="9" class="empty-row">Aucune donnée</td></tr>`;
+  renderSortIcons();
+  document.getElementById('pagination').innerHTML = '';
+}
+
+function toggleGroup(key) {
+  if (expandedGroups.has(key)) expandedGroups.delete(key);
+  else expandedGroups.add(key);
+  renderTable();
+}
+
+function renderSortIcons() {
   ['timestamp','c411','lacale','torr9','abn','tos','gf'].forEach(col => {
     const th = document.getElementById('th-' + col);
     if (!th) return;
@@ -718,8 +928,9 @@ function renderTable() {
     const icon = th.querySelector('.sort-icon');
     if (icon) icon.textContent = sortCol === col ? (sortDir === -1 ? '↓' : '↑') : '↕';
   });
+}
 
-  // Pagination
+function renderPagination(totalPages) {
   const pg = document.getElementById('pagination');
   if (totalPages <= 1) { pg.innerHTML = ''; return; }
   let btns = `<span class="page-info">Page ${tablePage}/${totalPages}</span>`;

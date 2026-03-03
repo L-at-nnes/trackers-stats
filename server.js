@@ -59,11 +59,28 @@ let lastScrape = null;
 let nextScrape = null;
 let scrapeTimer = null;
 
-// ── API ──────────────────────────────────────────────────
+// ── Cache lecture stats ─────────────────────────────────
+let _statsCache = null;
+let _statsCacheTime = 0;
+
+function loadDataCached() {
+  const now = Date.now();
+  if (_statsCache && now - _statsCacheTime < 5000) return _statsCache;
+  _statsCache = loadData();
+  _statsCacheTime = now;
+  return _statsCache;
+}
+
+function invalidateStatsCache() {
+  _statsCache = null;
+  _statsCacheTime = 0;
+}
+
+// ── API ──────────────────────────────────────────────
 
 // Données de scraping
 app.get('/api/stats', (req, res) => {
-  const data = loadData();
+  const data = loadDataCached();
   res.json(data);
 });
 
@@ -143,6 +160,7 @@ app.post('/api/clear', (req, res) => {
   try {
     const empty = { scrapes: [] };
     fs.writeFileSync(DATA_FILE, JSON.stringify(empty, null, 2));
+    invalidateStatsCache();
     res.json({ ok: true });
   } catch(e) {
     res.json({ error: e.message });
@@ -166,6 +184,7 @@ async function doScrape() {
     console.error('Erreur scrape:', err.message);
   }
   isRunning = false;
+  invalidateStatsCache();
   scheduleNext();
 }
 

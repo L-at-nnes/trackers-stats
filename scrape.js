@@ -560,19 +560,26 @@ async function main() {
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--window-size=1920,1080',
+      '--no-zygote',
       '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-translate',
+      '--hide-scrollbars',
+      '--mute-audio',
       '--no-first-run',
       '--no-default-browser-check',
       '--lang=fr-FR',
+      '--window-size=1280,800',
     ],
-    defaultViewport: { width: 1920, height: 1080 },
+    defaultViewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,
   });
 
   const results = { c411: null, lacale: null, torr9: null, abn: null, tos: null, gf: null };
 
-  // Scrape chaque tracker séquentiellement (un seul navigateur)
+  // Scrape chaque tracker séquentiellement — 3 essais max par tracker
   const trackers = [
     { id: 'c411',   name: 'C411',     fn: scrapeC411   },
     { id: 'lacale', name: 'La Cale',  fn: scrapeLaCale },
@@ -582,20 +589,44 @@ async function main() {
     { id: 'gf',     name: 'GF',       fn: scrapeGF     },
   ];
 
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY  = 10000; // 10s entre chaque essai
+
   for (const tracker of trackers) {
-    const page = await browser.newPage();
-    try {
-      const count = await tracker.fn(page);
-      results[tracker.id] = count !== null ? { torrents: count, status: 'ok' } : { torrents: null, status: 'no_data' };
-    } catch (err) {
-      log(tracker.name, `ERREUR: ${err.message}`);
-      results[tracker.id] = { torrents: null, status: 'error', error: err.message };
-    } finally {
-      await page.close().catch(() => {});
+    let success = false;
+    let scrapeResult = null;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const page = await browser.newPage();
+      try {
+        scrapeResult = await tracker.fn(page);
+        success = true;
+        await page.close().catch(() => {});
+        break;
+      } catch (err) {
+        lastError = err;
+        log(tracker.name, `ERREUR (tentative ${attempt}/${MAX_ATTEMPTS}): ${err.message}`);
+        await page.close().catch(() => {});
+        if (attempt < MAX_ATTEMPTS) {
+          log(tracker.name, `Nouvel essai dans ${RETRY_DELAY / 1000}s...`);
+          await sleep(RETRY_DELAY);
+        }
+      }
+    }
+
+    if (success) {
+      results[tracker.id] = scrapeResult !== null
+        ? { torrents: scrapeResult, status: 'ok' }
+        : { torrents: null, status: 'no_data' };
+    } else {
+      results[tracker.id] = { torrents: null, status: 'error', error: lastError?.message };
     }
   }
 
   await browser.close().catch(() => {});
+  // Laisser V8 libérer la mémoire Chromium avant de continuer
+  await sleep(1000);
 
   // Sauvegarder
   const entry = {
