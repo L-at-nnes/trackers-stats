@@ -9,7 +9,7 @@ Dashboard web qui scrape et historise le nombre de torrents de trackers privés 
 | C411 | https://c411.org | Nuxt 3 — texte page d'accueil |
 | La Cale | https://la-cale.space | Next.js RSC — page /stats |
 | Torr9 | https://torr9.xyz | Next.js SPA — page d'accueil |
-| ABN | https://abn.lol | ASP.NET MVC — pagination calculée |
+| A** | https://a**.***| ASP.NET MVC — pagination calculée |
 | TheOldSchool | https://theoldschool.cc | UNIT3D — page /stats Livewire |
 | Generation-Free | https://generation-free.org | UNIT3D — page /stats Livewire |
 
@@ -25,7 +25,7 @@ Dashboard web qui scrape et historise le nombre de torrents de trackers privés 
 ## Déploiement Docker (recommandé)
 
 ```bash
-git clone https://github.com/<user>/trackers-stats.git
+git clone https://github.com/l-at-nnes/trackers-stats.git
 cd trackers-stats
 docker compose up -d --build
 ```
