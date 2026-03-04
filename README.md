@@ -1,96 +1,75 @@
-# trackers-stats
+﻿# trackers-stats
 
-Scraping automatique des stats (nombre de torrents) de 4 trackers privés, avec dashboard web en temps réel.
+Dashboard web qui scrape et historise le nombre de torrents de trackers privés francais.
 
 ## Trackers supportés
 
-| Tracker | URL | Méthode |
-|---------|-----|---------|
-| **C411** | https://c411.org | Texte de la page d'accueil |
-| **La Cale** | https://la-cale.space | Page `/stats`, attente JS |
-| **Torr9** | https://torr9.xyz | Texte de la page d'accueil |
-| **ABN** | https://abn.lol | Pagination calculée : `(dernière_page - 1) × 50 + torrents_dernière_page` |
+| Tracker | URL | Moteur |
+|---|---|---|
+| C411 | https://c411.org | Nuxt 3 — texte page d'accueil |
+| La Cale | https://la-cale.space | Next.js RSC — page /stats |
+| Torr9 | https://torr9.xyz | Next.js SPA — page d'accueil |
+| ABN | https://abn.lol | ASP.NET MVC — pagination calculée |
+| TheOldSchool | https://theoldschool.cc | UNIT3D — page /stats Livewire |
+| Generation-Free | https://generation-free.org | UNIT3D — page /stats Livewire |
 
-## Installation
+## Fonctionnalités
+
+- Scraping automatique à intervalle configurable, avec alignement sur une heure fixe
+- 3 tentatives par tracker en cas d'échec
+- Dashboard web : graphique (12 plages temporelles), tableau (groupement jour/semaine/mois), paramètres
+- Export PNG et CSV
+- Configuration complète via la WebUI — aucun fichier de config à éditer
+- Les identifiants sont stockés dans `data/config.json` (non versionné)
+
+## Déploiement Docker (recommandé)
+
+```bash
+git clone https://github.com/<user>/trackers-stats.git
+cd trackers-stats
+docker compose up -d --build
+```
+
+L'application est disponible sur `http://<ip>:3000`.
+
+Les identifiants se configurent dans l'onglet **Paramètres** de la WebUI et sont sauvegardés dans `data/config.json` sur l'hôte (volume bind-mount).
+
+## Mise à jour
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Les données dans `data/` ne sont jamais écrasées.
+
+## Sans Docker
+
+Node.js 18+ et Chromium requis.
 
 ```bash
 npm install
-```
-
-Copier `.env.example` → `.env` et remplir les identifiants :
-
-```bash
-cp .env.example .env
-```
-
-## Configuration (.env)
-
-```env
-SCRAPE_INTERVAL_MINUTES=10   # Intervalle de scraping en minutes
-PORT=3000                    # Port du serveur web
-
-C411_USERNAME=...
-C411_PASSWORD=...
-
-LACALE_USERNAME=...
-LACALE_PASSWORD=...
-
-TORR9_USERNAME=...
-TORR9_PASSWORD=...
-
-ABN_USERNAME=...
-ABN_PASSWORD=...
-
-# Optionnel
-HEADLESS=true          # false = navigateur visible (debug)
-CHROME_PATH=...        # Chemin personnalisé vers le navigateur
-```
-
-## Lancement
-
-```bash
-# Serveur web + scraping automatique
 node server.js
-
-# Dashboard : http://localhost:3000
 ```
 
-```bash
-# Scrape unique (sans serveur)
-node scrape.js
-```
-
-## Dashboard
-
-Accessible sur **http://localhost:3000**, 3 onglets :
-
-- **Graphique** — Évolution par plage temporelle (6h / 24h / 7j / 30j / tout)
-- **Tableau** — Historique complet, tri par colonne, filtre, pagination, export CSV
-- **Paramètres** — Statut, prochain scrape, changement d'intervalle, édition des identifiants
-
-## Docker / NAS
-
-Le script détecte automatiquement Chromium sous Linux. S'assurer que Chromium est installé :
-
-```dockerfile
-RUN apt-get install -y chromium-browser
-```
-
-```env
-HEADLESS=true
-CHROME_PATH=/usr/bin/chromium-browser
-```
+Le script détecte automatiquement Brave, Chrome, Edge ou Chromium.
+Pour forcer un chemin : variable d'environnement `CHROME_PATH`.
 
 ## Structure
 
 ```
 trackers-stats/
-├── scrape.js          # Logique de scraping (4 trackers)
-├── server.js          # Serveur Express + cron
+├── scrape.js          # Logique de scraping (6 trackers, 3 essais/tracker)
+├── server.js          # Serveur Express + planificateur
 ├── public/
-│   └── index.html     # Dashboard web (3 onglets)
+│   └── index.html     # Dashboard web
 ├── data/
-│   └── stats.json     # Historique des scrapes
-├── .env               # Identifiants et config (non versionné)
-└── .env.example       # Template de configuration
+│   ├── config.json    # Identifiants et config (non versionné, géré par la WebUI)
+│   └── stats.json     # Historique des scrapes (non versionné)
+├── Dockerfile
+└── docker-compose.yml
 ```
+
+## Sécurité
+
+`data/config.json` et `data/stats.json` sont dans `.gitignore` et ne sont jamais commités.
