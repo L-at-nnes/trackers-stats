@@ -921,8 +921,13 @@ function renderTable() {
     const groupDelta = {};
     const groupLast  = {};
     for (const id of TRACKER_IDS) {
-      groupLast[id]  = lastRow[id];
-      const fv = firstRow[id], lv = lastRow[id];
+      // Dernier point (peut être null si le dernier scrape a échoué)
+      groupLast[id] = lastRow[id];
+      // Premier et dernier points NON-NULL du groupe (saute les scrapes échoués)
+      const firstValid = chronoRows.find(r => r[id] != null);
+      const lastValid  = [...chronoRows].reverse().find(r => r[id] != null);
+      const fv = firstValid?.[id] ?? null;
+      const lv = lastValid?.[id]  ?? null;
       groupDelta[id] = (fv != null && lv != null) ? lv - fv : null;
     }
     const totalLast = (groupLast.c411||0)+(groupLast.lacale||0)+(groupLast.torr9||0)+(groupLast.abn||0)+(groupLast.tos||0)+(groupLast.gf||0);
