@@ -557,13 +557,17 @@ function decimateData(data) {
   return result;
 }
 
+// trackerNullTimes[id] = Set<ms> des timestamps dont le scrape a échoué, pour le rendu graphique
+const trackerNullTimes = {};
+
+function getFilteredDataRaw() {
+  if (currentRange === 'all' || !allData.length) return allData;
+  const cutoff = Date.now() - (RANGE_MS[currentRange] || 24*3600e3);
+  return allData.filter(s => new Date(s.timestamp).getTime() >= cutoff);
+}
+
 function getFilteredData() {
-  let filtered = allData;
-  if (currentRange !== 'all' && allData.length) {
-    const cutoff = Date.now() - (RANGE_MS[currentRange] || 24*3600e3);
-    filtered = allData.filter(s => new Date(s.timestamp).getTime() >= cutoff);
-  }
-  return decimateData(filtered);
+  return decimateData(getFilteredDataRaw());
 }
 
 // ─── Plugin fond opaque (PNG export) ─────────────────────
@@ -601,9 +605,13 @@ const deltaPlugin = {
       const color = dataset.borderColor || '#94a3b8';
 
       labelIdxSet.forEach(idx => {
-        const cur  = dataset.data[idx];
-        const prev = dataset.data[idx - 1];
-        if (cur == null || prev == null) return;
+        const cur = dataset.data[idx];
+        if (cur == null) return;
+        // Remonter au dernier point non-null pour calculer le delta (saute les échecs)
+        let prevIdx = idx - 1;
+        while (prevIdx >= 0 && dataset.data[prevIdx] == null) prevIdx--;
+        if (prevIdx < 0) return;
+        const prev = dataset.data[prevIdx];
         const delta = cur - prev;
         if (delta === 0) return;
 
@@ -645,22 +653,53 @@ const deltaPlugin = {
 };
 
 function renderChart() {
-  const filtered = getFilteredData();
+  const rawFiltered = getFilteredDataRaw();
+  // Construire les sets de timestamps échoués pour le tracé en pointillé
+  for (const t of TRACKERS) {
+    trackerNullTimes[t.id] = new Set(
+      rawFiltered
+        .filter(s => s.trackers[t.id]?.torrents == null)
+        .map(s => new Date(s.timestamp).getTime())
+    );
+  }
+  const filtered = decimateData(rawFiltered);
   const labels = filtered.map(s => new Date(s.timestamp));
   const datasets = TRACKERS
     .filter(t => trackerVisible[t.id])
-    .map(t => ({
-      label: t.label,
-      data: filtered.map(s => s.trackers[t.id]?.torrents ?? null),
-      borderColor: t.color,
-      backgroundColor: t.color + '15',
-      tension: 0.3,
-      pointRadius: 3,
-      pointHoverRadius: 6,
-      borderWidth: 2,
-      fill: false,
-      spanGaps: true,
-    }));
+    .map(t => {
+      const nullSet = trackerNullTimes[t.id];
+      return {
+        label: t.label,
+        data: filtered.map(s => s.trackers[t.id]?.torrents ?? null),
+        borderColor: t.color,
+        backgroundColor: t.color + '15',
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        borderWidth: 2,
+        fill: false,
+        spanGaps: true,
+        // Segment en pointillé si un scrape échoué se trouve dans l'intervalle
+        segment: {
+          borderDash: ctx => {
+            if (!nullSet || nullSet.size === 0) return undefined;
+            const lbls = ctx.chart.data.labels;
+            const t0 = lbls[ctx.p0DataIndex]?.getTime?.() ?? 0;
+            const t1 = lbls[ctx.p1DataIndex]?.getTime?.() ?? 0;
+            for (const nt of nullSet) { if (nt > t0 && nt < t1) return [5, 5]; }
+            return undefined;
+          },
+          borderWidth: ctx => {
+            if (!nullSet || nullSet.size === 0) return undefined;
+            const lbls = ctx.chart.data.labels;
+            const t0 = lbls[ctx.p0DataIndex]?.getTime?.() ?? 0;
+            const t1 = lbls[ctx.p1DataIndex]?.getTime?.() ?? 0;
+            for (const nt of nullSet) { if (nt > t0 && nt < t1) return 1.5; }
+            return undefined;
+          },
+        },
+      };
+    });
 
   if (chart) { chart.destroy(); chart = null; }
   const ctx = document.getElementById('chart').getContext('2d');
@@ -765,14 +804,14 @@ function getGroupLabel(key, group) {
   return key;
 }
 
-// ── Données pour le tableau (avec deltas par rapport au scrape précédent) ──
+// ── Données pour le tableau (avec deltas vs dernier scrape valide, les échecs sont ignorés) ──
 function getAllRows() {
+  const TRACKER_IDS = ['c411','lacale','torr9','abn','tos','gf'];
+  // Trier chronologiquement pour propager la dernière valeur valide
   const sortedChron = [...allData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  const prevMap = new Map();
-  for (let i = 1; i < sortedChron.length; i++) prevMap.set(sortedChron[i].timestamp, sortedChron[i-1]);
+  const lastValid = {}; // id -> dernière valeur non-null connue
 
-  return allData.map(s => {
-    const prev = prevMap.get(s.timestamp);
+  return sortedChron.map(s => {
     const row = {
       timestamp: s.timestamp,
       c411:   s.trackers.c411?.torrents   ?? null,
@@ -782,12 +821,14 @@ function getAllRows() {
       tos:    s.trackers.tos?.torrents    ?? null,
       gf:     s.trackers.gf?.torrents     ?? null,
     };
-    for (const id of ['c411','lacale','torr9','abn','tos','gf']) {
-      const cur  = s.trackers[id]?.torrents;
-      const prv  = prev?.trackers[id]?.torrents;
-      row['d_'+id] = (cur != null && prv != null) ? cur - prv : null;
+    for (const id of TRACKER_IDS) {
+      const cur  = row[id];
+      const prev = lastValid[id] ?? null;
+      // Delta vs dernier point valide (saute les scrapes échoués)
+      row['d_'+id] = (cur != null && prev != null) ? cur - prev : null;
+      if (cur != null) lastValid[id] = cur;
     }
-    row.total = (row.c411||0)+(row.lacale||0)+(row.torr9||0)+(row.abn||0)+(row.tos||0)+(row.gf||0);
+    row.total = TRACKER_IDS.reduce((acc, id) => acc + (row[id] || 0), 0);
     return row;
   });
 }
